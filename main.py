@@ -23,10 +23,32 @@ def load_last_notified():
     return {}
 
 def save_last_notified(data):
-    """更新影片 ID 紀錄檔案"""
+    """更新影片 ID 紀錄檔案，並清理超過 30 天的舊紀錄"""
     try:
+        # 設定清理基準點（30 天前）
+        now = datetime.now(timezone.utc)
+        retention_days = 30
+        
+        # 過濾掉太舊的紀錄
+        cleaned_data = {}
+        for vid, info in data.items():
+            try:
+                # 解析紀錄中的時間
+                recorded_time_str = info.get('time', '')
+                if recorded_time_str:
+                    recorded_time = datetime.fromisoformat(recorded_time_str)
+                    # 如果紀錄時間在 30 天內，則保留
+                    if now - recorded_time < timedelta(days=retention_days):
+                        cleaned_data[vid] = info
+                else:
+                    # 若無時間標記，則暫時保留
+                    cleaned_data[vid] = info
+            except Exception:
+                # 若解析失敗也保留，避免誤刪
+                cleaned_data[vid] = info
+        
         with open(DATA_FILE, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=4, ensure_ascii=False)
+            json.dump(cleaned_data, f, indent=4, ensure_ascii=False)
         return True
     except Exception as e:
         print(f"❌ 無法儲存紀錄檔: {e}")
@@ -77,7 +99,6 @@ def send_discord_notification(webhook_url, video_data, status_text):
 
 def check_youtube():
     """檢查 YouTube 頻道最新動態"""
-    # 將搜尋範圍改回 1 小時，適合 15 分鐘一次的自動排程
     published_after = (datetime.now(timezone.utc) - timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M:%SZ')
     
     url = f"https://www.googleapis.com/youtube/v3/search?key={YOUTUBE_API_KEY}&channelId={CHANNEL_ID}&part=snippet,id&order=date&maxResults=10&type=video&publishedAfter={published_after}"
@@ -105,23 +126,37 @@ def check_youtube():
 
             if live_status == 'live':
                 if send_discord_notification(DISCORD_WEBHOOK_B, item, "直播中"):
-                    last_notified[video_id] = {"status": "live", "time": str(datetime.now())}
+                    last_notified[video_id] = {
+                        "status": "live", 
+                        "title": title,
+                        "time": datetime.now(timezone.utc).isoformat()
+                    }
                     updated = True
             elif live_status == 'none':
                 if is_actually_a_live_archive(video_id):
                     print(f"⏭️ 過濾直播存檔: {title}")
-                    last_notified[video_id] = {"status": "archived", "time": str(datetime.now())}
+                    last_notified[video_id] = {
+                        "status": "archived", 
+                        "title": title,
+                        "time": datetime.now(timezone.utc).isoformat()
+                    }
                     updated = True
                     continue
                 
                 if send_discord_notification(DISCORD_WEBHOOK_A, item, "新影片/Shorts"):
-                    last_notified[video_id] = {"status": "none", "time": str(datetime.now())}
+                    last_notified[video_id] = {
+                        "status": "none", 
+                        "title": title,
+                        "time": datetime.now(timezone.utc).isoformat()
+                    }
                     updated = True
 
+        # 為了讓清理邏輯生效，即使沒有新影片，我們每隔一段時間也可以執行存檔（這邊設定只要有檢查就跑存檔邏輯）
+        # 或者維持現狀：只有在「有新通知」時才順便清理舊紀錄，這對效能最好。
         if updated:
             if not save_last_notified(last_notified):
                 exit(1)
-            print("💾 紀錄已更新。")
+            print("💾 紀錄已更新（並已清理過期紀錄）。")
         else:
             print("✨ 無新內容。")
 
