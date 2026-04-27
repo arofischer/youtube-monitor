@@ -11,13 +11,17 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write # 允許 Action 寫入與提交 JSON 檔案
+    
+    # 提前採用 Node.js 24 以消除警告
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4 # v4 目前仍相容，但建議保持關注
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5 # 升級到 v5 以支援最新環境
         with:
           python-version: '3.10'
 
@@ -39,4 +43,5 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add last_notified.json
+          # 檢查是否有變動，有的話才提交
           git diff --quiet && git diff --staged --quiet || (git commit -m "chore: update last notified history" && git push)
