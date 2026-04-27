@@ -52,7 +52,7 @@ def send_discord_notification(webhook_url, video_data, status_text):
 def check_youtube():
     """檢查 YouTube 頻道最新動態"""
     # 增加檢查最近一小時發布的影片，避免抓到過舊的存檔
-    published_after = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    published_after = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
     
     url = f"https://www.googleapis.com/youtube/v3/search?key={YOUTUBE_API_KEY}&channelId={CHANNEL_ID}&part=snippet,id&order=date&maxResults=10&publishedAfter={published_after}"
     
