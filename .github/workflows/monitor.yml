@@ -2,26 +2,23 @@ name: YouTube Monitor Automation
 
 on:
   schedule:
-    # 每 15 分鐘執行一次 (UTC 時間)
     - cron: '*/15 * * * *'
-  workflow_dispatch: # 允許手動觸發測試
+  workflow_dispatch:
 
 jobs:
   monitor:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # 允許 Action 寫入與提交 JSON 檔案
-    
-    # 提前採用 Node.js 24 以消除警告
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      contents: write # 必須確保有寫入權限
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4 # v4 目前仍相容，但建議保持關注
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 獲取完整歷史以利於 push
 
       - name: Set up Python
-        uses: actions/setup-python@v5 # 升級到 v5 以支援最新環境
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
@@ -42,6 +39,21 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # 檢查檔案是否存在，不存在則建立空的以避免 git add 失敗
+          if [ ! -f last_notified.json ]; then
+            echo "{}" > last_notified.json
+          fi
+          
           git add last_notified.json
-          # 檢查是否有變動，有的話才提交
-          git diff --quiet && git diff --staged --quiet || (git commit -m "chore: update last notified history" && git push)
+          
+          # 檢查是否有內容變更
+          if git diff --staged --quiet; then
+            echo "沒有紀錄更新，跳過提交。"
+          else
+            git commit -m "chore: update notification history [skip ci]"
+            # 使用 GITHUB_TOKEN 確保有權限推送
+            git push origin HEAD:${{ github.ref }}
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
