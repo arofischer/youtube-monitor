@@ -2,20 +2,24 @@ name: YouTube Monitor Automation
 
 on:
   schedule:
-    - cron: '*/15 * * * *'
-  workflow_dispatch:
+    # 嘗試分散時間點，減少被 GitHub 延遲的機率
+    - cron: '5,20,35,50 * * * *'
+  push:
+    branches:
+      - main
+  workflow_dispatch: # 保持手動觸發
 
 jobs:
   monitor:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # 必須確保有寫入權限
+      contents: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # 獲取完整歷史以利於 push
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -40,20 +44,13 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # 檢查檔案是否存在，不存在則建立空的以避免 git add 失敗
-          if [ ! -f last_notified.json ]; then
-            echo "{}" > last_notified.json
+          if [ -f last_notified.json ]; then
+            git add last_notified.json
+            if git diff --staged --quiet; then
+              echo "No changes to commit"
+            else
+              git commit -m "chore: update notification history [skip ci]"
+              git pull --rebase origin main
+              git push origin main
+            fi
           fi
-          
-          git add last_notified.json
-          
-          # 檢查是否有內容變更
-          if git diff --staged --quiet; then
-            echo "沒有紀錄更新，跳過提交。"
-          else
-            git commit -m "chore: update notification history [skip ci]"
-            # 使用 GITHUB_TOKEN 確保有權限推送
-            git push origin HEAD:${{ github.ref }}
-          fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
